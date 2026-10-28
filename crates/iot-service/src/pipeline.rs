@@ -532,7 +532,7 @@ pub async fn process(state: &AppState, ctx: &Ctx, tx: &mut Tx, tc: &TenantCtx, o
                 max_op = CASE WHEN EXCLUDED.max_op IS NULL THEN flow_rollups.max_op WHEN flow_rollups.max_op IS NULL THEN EXCLUDED.max_op
                               WHEN array_position(ARRAY['session','read','diagnostic','write','control','program','firmware'], EXCLUDED.max_op) > array_position(ARRAY['session','read','diagnostic','write','control','program','firmware'], flow_rollups.max_op)
                               THEN EXCLUDED.max_op ELSE flow_rollups.max_op END,
-                operations = (SELECT array_agg(DISTINCT x) FROM unnest(flow_rollups.operations || EXCLUDED.operations) x)",
+                operations = coalesce((SELECT array_agg(DISTINCT x) FROM unnest(flow_rollups.operations || EXCLUDED.operations) x), '{}')",
         )
         .bind(tenant)
         .bind(id)
@@ -555,8 +555,8 @@ pub async fn process(state: &AppState, ctx: &Ctx, tx: &mut Tx, tc: &TenantCtx, o
         sqlx::query(
             "INSERT INTO graph_edges (tenant_id, from_node, to_node, from_asset, to_asset, protocols, ports, max_op, bytes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
              ON CONFLICT (tenant_id, from_node, to_node) DO UPDATE SET last_seen = now(), bytes = graph_edges.bytes + EXCLUDED.bytes,
-                protocols = (SELECT array_agg(DISTINCT x) FROM unnest(graph_edges.protocols || EXCLUDED.protocols) x),
-                ports = (SELECT array_agg(DISTINCT x) FROM (SELECT unnest(graph_edges.ports || EXCLUDED.ports) x LIMIT 64) y),
+                protocols = coalesce((SELECT array_agg(DISTINCT x) FROM unnest(graph_edges.protocols || EXCLUDED.protocols) x), '{}'),
+                ports = coalesce((SELECT array_agg(DISTINCT x) FROM (SELECT unnest(graph_edges.ports || EXCLUDED.ports) x LIMIT 64) y), '{}'),
                 max_op = coalesce(EXCLUDED.max_op, graph_edges.max_op)",
         )
         .bind(tenant)
@@ -608,8 +608,8 @@ pub async fn raise_alert(tx: &mut Tx, tenant: Uuid, kind: &str, dedup: &str, sev
 
 /// Recent flows of an asset (last 24 h of rollups) for behaviour and risk.
 async fn recent_flows(tx: &mut Tx, asset: Uuid) -> ApiResult<Vec<Flow>> {
-    let rows: Vec<(String, String, i32, bool, Option<String>, Option<String>, i64, i64, Vec<String>)> = sqlx::query_as(
-        "SELECT peer_ip, transport, port, outbound, protocol, max_op, sum(packets)::bigint, sum(bytes)::bigint, (array_agg(operations))[1]
+    let rows: Vec<(String, String, i32, bool, Option<String>, Option<String>, i64, i64, Value)> = sqlx::query_as(
+        "SELECT peer_ip, transport, port, outbound, protocol, max_op, sum(packets)::bigint, sum(bytes)::bigint, jsonb_agg(to_jsonb(operations))
          FROM flow_rollups WHERE asset_id = $1 AND bucket > now() - interval '24 hours'
          GROUP BY peer_ip, transport, port, outbound, protocol, max_op LIMIT 512",
     )
@@ -628,7 +628,14 @@ async fn recent_flows(tx: &mut Tx, asset: Uuid) -> ApiResult<Vec<Flow>> {
             bytes: bytes as u64,
             protocol: protocol.as_deref().and_then(iot_core::protocols::Protocol::parse),
             max_op: max_op.as_deref().and_then(segmentation::op_class),
-            operations,
+            operations: {
+                let mut o: Vec<String> =
+                    operations.as_array().into_iter().flatten().flat_map(|a| a.as_array().cloned().unwrap_or_default()).filter_map(|x| x.as_str().map(String::from)).collect();
+                o.sort();
+                o.dedup();
+                o.truncate(32);
+                o
+            },
         })
         .collect())
 }
@@ -836,6 +843,19 @@ pub async fn evaluate(state: &AppState, ctx: &Ctx, tx: &mut Tx, tc: &TenantCtx, 
             .await?;
             events::emit_simple(tx, ctx, "iot_anomaly", "detected", aid, Some(1), json!({ "asset_id": id, "kind": a.kind.as_str(), "severity": a.severity, "title": a.title }))
                 .await?;
+            // High-severity anomalies on the asset also open (or bump) an alert for the SOC queue.
+            if a.severity >= 8.0 {
+                raise_alert(
+                    tx,
+                    tenant,
+                    "anomaly",
+                    &format!("anomaly:{id}:{}", a.kind.as_str()),
+                    a.severity.round() as i32,
+                    &a.title,
+                    json!({ "asset_id": id, "anomaly_id": aid, "kind": a.kind.as_str() }),
+                )
+                .await?;
+            }
         }
     }
     // Risk.

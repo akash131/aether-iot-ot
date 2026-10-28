@@ -455,7 +455,7 @@ pub async fn push_firewall(state: &AppState, tenant: Uuid) -> ApiResult<usize> {
     }
     let ctx = system_ctx(state, tenant);
     let mut tx = ctx.tx().await?;
-    let since = get_sync(&mut tx, "firewall_pushed_at").await?.as_str().and_then(|s| s.parse::<DateTime<Utc>>().ok()).unwrap_or(DateTime::<Utc>::MIN_UTC);
+    let since = get_sync(&mut tx, "firewall_pushed_at").await?.as_str().and_then(|s| s.parse::<DateTime<Utc>>().ok()).unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
     let rows: Vec<(String, Uuid)> =
         sqlx::query_as("SELECT ip, id FROM assets WHERE ip IS NOT NULL AND merged_into IS NULL AND lifecycle <> 'decommissioned' AND updated_at > $1 LIMIT 10000")
             .bind(since)

@@ -85,7 +85,9 @@ fn filters(q: &HashMap<String, String>) -> ApiResult<(Vec<String>, Vec<String>)>
         binds.push(v);
         wh.push(sql.replace("$?", &format!("${}", binds.len())));
     };
-    for (k, col) in [("device_type", "device_type"), ("category", "category"), ("risk_level", "risk_level"), ("tier", "tier"), ("lifecycle", "lifecycle")] {
+    for (k, col) in
+        [("device_type", "device_type"), ("category", "category"), ("risk_level", "risk_level"), ("tier", "tier"), ("lifecycle", "lifecycle"), ("ip", "ip"), ("mac", "mac")]
+    {
         if let Some(v) = q.get(k).filter(|v| !v.is_empty()) {
             add(&format!("a.{col} = ANY(string_to_array($?, ','))"), v.clone(), &mut binds, &mut wh);
         }
@@ -604,7 +606,7 @@ async fn merge(State(st): State<AppState>, ctx: Ctx, Json(body): Json<Value>) ->
         sqlx::query(
             "UPDATE assets t SET mac = coalesce(t.mac, s.mac), serial = coalesce(t.serial, s.serial), hostname = coalesce(t.hostname, s.hostname), client_id = coalesce(t.client_id, s.client_id),
                  ip = coalesce(t.ip, s.ip), signals = (SELECT jsonb_agg(DISTINCT x) FROM (SELECT jsonb_array_elements(t.signals) x UNION SELECT jsonb_array_elements(s.signals)) y),
-                 first_seen = least(t.first_seen, s.first_seen), last_seen = greatest(t.last_seen, s.last_seen), tags = (SELECT array_agg(DISTINCT x) FROM unnest(t.tags || s.tags) x),
+                 first_seen = least(t.first_seen, s.first_seen), last_seen = greatest(t.last_seen, s.last_seen), tags = coalesce((SELECT array_agg(DISTINCT x) FROM unnest(t.tags || s.tags) x), '{}'),
                  version = t.version + 1, updated_at = now()
              FROM assets s WHERE t.id = $1 AND s.id = $2",
         )

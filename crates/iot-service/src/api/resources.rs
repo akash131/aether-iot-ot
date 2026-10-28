@@ -359,16 +359,21 @@ def!(ROLLOUTS, "rollouts", "rollouts", "rollout", ROLLOUT_FIELDS, refs: &[r("zon
 /// Exceptions are created through `POST /api/v1/exceptions` (approval
 /// workflow, api/segmentation.rs); the definition serves reads, updates
 /// of the description and the console metadata.
+/// Optional on create, immutable afterwards.
+const fn once(name: &'static str, kind: Kind) -> Field {
+    Field { name, kind, required: false, patchable: false }
+}
+
 const EXCEPTION_FIELDS: &[Field] = &[
     req("name", Kind::Text(200)),
     req("justification", Kind::Text(4000)),
-    fixed("source_asset_id", Kind::Uuid),
-    fixed("destination_asset_id", Kind::Uuid),
-    fixed("source_group_id", Kind::Uuid),
-    fixed("destination_group_id", Kind::Uuid),
-    fixed("protocol", Kind::Text(32)),
-    fixed("port", Kind::Int(1, 65535)),
-    fixed("max_op", Kind::Enum(iot_core::protocols::OP_CLASSES)),
+    once("source_asset_id", Kind::Uuid),
+    once("destination_asset_id", Kind::Uuid),
+    once("source_group_id", Kind::Uuid),
+    once("destination_group_id", Kind::Uuid),
+    once("protocol", Kind::Text(32)),
+    once("port", Kind::Int(1, 65535)),
+    once("max_op", Kind::Enum(iot_core::protocols::OP_CLASSES)),
     req("starts_at", Kind::Timestamp),
     req("expires_at", Kind::Timestamp),
 ];
