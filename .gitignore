@@ -1,0 +1,4 @@
+/target
+*.swp
+/state
+env.sh

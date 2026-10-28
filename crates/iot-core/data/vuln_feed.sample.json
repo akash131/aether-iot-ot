@@ -1,0 +1,26 @@
+{
+  "name": "aether-sample-feed",
+  "version": "2026.10.0",
+  "_note": "Synthetic sample data for tests and demonstrations. Identifiers prefixed AETHER-SAMPLE are not real advisories. Connect a vulnerability intelligence feed for production use (see docs/operations.md).",
+  "advisories": [
+    {"id": "AETHER-SAMPLE-0001", "vendor": "Rockwell Automation", "product": "1756-L8", "version_end": "33.0", "cvss": 9.8, "known_exploited": true, "summary": "Sample: crafted CIP request causes controller fault", "remediation": "upgrade controller firmware to 33.0 or later", "vector": "enip"},
+    {"id": "AETHER-SAMPLE-0002", "vendor": "Rockwell Automation", "product": "1756-L8", "version_start": "20.0", "version_end": "30.0", "cvss": 7.5, "summary": "Sample: web server denial of service", "remediation": "upgrade to 30.0 or later", "vector": "http"},
+    {"id": "AETHER-SAMPLE-0003", "vendor": "Siemens", "product": "CPU 1516", "version_end": "2.9.7", "cvss": 8.6, "summary": "Sample: unauthenticated S7 session hijack", "remediation": "upgrade firmware to 2.9.7", "vector": "s7comm"},
+    {"id": "AETHER-SAMPLE-0004", "vendor": "Hikvision", "product": "DS-2CD", "cvss": 9.1, "known_exploited": true, "summary": "Sample: command injection in camera web interface", "remediation": "apply the vendor firmware update and restrict web access", "vector": "http"},
+    {"id": "AETHER-SAMPLE-0005", "vendor": "Schneider Electric", "product": "M580", "version_end": "4.10", "cvss": 7.2, "summary": "Sample: Modbus function 90 authentication bypass", "remediation": "upgrade to 4.10", "vector": "modbus"},
+    {"id": "AETHER-SAMPLE-0006", "vendor": "Axis Communications", "product": "*", "version_end": "10.12", "cvss": 6.4, "summary": "Sample: information disclosure via VAPIX", "remediation": "upgrade AXIS OS", "vector": "http"},
+    {"id": "AETHER-SAMPLE-0007", "vendor": "Acme Medical", "product": "Infuse", "version_end": "4.2", "cvss": 8.1, "summary": "Sample: unauthenticated drug library update", "remediation": "upgrade pump firmware to 4.2", "vector": "http"}
+  ],
+  "end_of_life": [
+    {"vendor": "Hikvision", "product": "DS-2CD2043", "end_of_support": "2024-12-31", "replacement": "a supported camera model"},
+    {"vendor": "Siemens", "product": "CPU 315", "end_of_support": "2023-10-01", "replacement": "CPU 1516"},
+    {"vendor": "Rockwell Automation", "product": "1756-L6", "end_of_support": "2021-06-30", "replacement": "1756-L8 series"}
+  ],
+  "default_credentials": [
+    {"vendor": "Hikvision", "product": "*", "service": "http"},
+    {"vendor": "Axis Communications", "product": "*", "service": "http"},
+    {"vendor": "Moxa", "product": "*", "service": "telnet"},
+    {"vendor": "Lantronix", "product": "*", "service": "telnet"},
+    {"vendor": "Schneider Electric", "product": "*", "service": "ftp"}
+  ]
+}

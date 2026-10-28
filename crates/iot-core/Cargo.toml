@@ -1,0 +1,16 @@
+[package]
+name = "iot-core"
+description = "Aether IoT/OT Security engines: packet decoding, passive fingerprinting, explainable device classification, industrial protocol parsers, asset identity, risk, vulnerability mapping, behaviour baselines, segmentation, failure matrix and acceptance harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aether-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+hex.workspace = true
+chrono.workspace = true
+uuid.workspace = true

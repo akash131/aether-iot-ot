@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = ["crates/iot-core", "crates/iot-service"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Proprietary"
+rust-version = "1.87"
+
+[workspace.dependencies]
+aether-core = { git = "https://github.com/akash131/aether-platform", branch = "main" }
+aether-kit = { git = "https://github.com/akash131/aether-platform", branch = "main" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+regex = "1"
+async-trait = "0.1"
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+axum = { version = "0.8", features = ["macros"] }
+tracing = "0.1"
+rand = "0.8"
+bytes = "1"
+futures-util = "0.3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+
+[profile.dev.package."*"]
+opt-level = 2
