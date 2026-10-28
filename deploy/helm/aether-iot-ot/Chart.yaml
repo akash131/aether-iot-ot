@@ -1,0 +1,6 @@
+apiVersion: v2
+name: aether-iot-ot
+description: Aether IoT/OT Security - device discovery and classification, OT protocol awareness, risk, segmentation, privileged remote access and the edge appliance
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

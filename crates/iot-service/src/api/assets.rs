@@ -54,6 +54,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/assets/{id}/flows", get(flows))
         .route("/api/v1/assets/{id}/baseline", get(baseline))
         .route("/api/v1/assets/{id}/baseline/{action}", post(baseline_action))
+        .route("/api/v1/assets/{id}/baseline/snapshots/{snapshot}/diff", get(baseline_diff))
         .route("/api/v1/assets/{id}/identities", get(identities))
         .route("/api/v1/assets/{id}/quarantine", post(quarantine).delete(release))
         .route("/api/v1/assets/{id}/decommission", post(decommission))
@@ -420,6 +421,38 @@ async fn baseline(ctx: Ctx, Path(id): Path<Uuid>) -> ApiResult<Envelope> {
         json!({ "network_mode": nm, "process_mode": pm, "started_at": base.started_at, "completed_at": base.completed_at, "edges": edges, "values": base.values, "operations": base.operations, "allow_list": allow,
             "snapshots": snaps.into_iter().map(|s| s.0).collect::<Vec<_>>(), "version": base.version }),
     ))
+}
+
+/// Difference between a baseline snapshot and the current baseline
+/// (AE-IOT-0013): communication edges added and removed, operation classes
+/// raised, process values whose learned range changed.
+async fn baseline_diff(ctx: Ctx, Path((id, snapshot)): Path<(Uuid, Uuid)>) -> ApiResult<Envelope> {
+    pre(&ctx, READ)?;
+    let mut tx = ctx.tx().await?;
+    load(&mut tx, id).await?;
+    let old: Option<(Value, chrono::DateTime<chrono::Utc>)> =
+        sqlx::query_as("SELECT data, taken_at FROM baseline_snapshots WHERE id = $1 AND asset_id = $2").bind(snapshot).bind(id).fetch_optional(&mut *tx).await?;
+    let (old, taken_at) = old.ok_or_else(|| ApiError::not_found("baseline snapshot"))?;
+    let cur: Option<(Value,)> = sqlx::query_as("SELECT data FROM baselines WHERE asset_id = $1").bind(id).fetch_optional(&mut *tx).await?;
+    tx.commit().await?;
+    let parse = |v: Value| serde_json::from_value::<iot_core::baseline::Baseline>(v).map_err(|e| ApiError::internal(e.to_string()));
+    let old = parse(old)?;
+    let cur = parse(cur.map(|c| c.0).unwrap_or_else(|| serde_json::to_value(iot_core::baseline::Baseline::new(chrono::Utc::now())).unwrap_or_default()))?;
+    let edges = |b: &iot_core::baseline::Baseline| -> std::collections::BTreeMap<String, Value> {
+        b.edges.iter().map(|(k, (e, st))| (k.clone(), json!({ "edge": e, "protocol": st.protocol, "max_op": st.max_op }))).collect()
+    };
+    let (eo, ec) = (edges(&old), edges(&cur));
+    let added: Vec<&Value> = ec.iter().filter(|(k, _)| !eo.contains_key(*k)).map(|(_, v)| v).collect();
+    let removed: Vec<&Value> = eo.iter().filter(|(k, _)| !ec.contains_key(*k)).map(|(_, v)| v).collect();
+    let raised: Vec<Value> =
+        ec.iter().filter_map(|(k, v)| eo.get(k).filter(|o| o["max_op"] != v["max_op"]).map(|o| json!({ "edge": v["edge"], "from": o["max_op"], "to": v["max_op"] }))).collect();
+    let values: Vec<Value> = cur
+        .values
+        .iter()
+        .filter(|(k, r)| old.values.get(*k).map(|o| serde_json::to_value(o).ok() != serde_json::to_value(*r).ok()).unwrap_or(true))
+        .map(|(k, r)| json!({ "point": k, "from": old.values.get(k), "to": r }))
+        .collect();
+    Ok(Envelope::ok(&ctx, json!({ "asset_id": id, "snapshot_id": snapshot, "taken_at": taken_at, "added": added, "removed": removed, "raised": raised, "values_changed": values })))
 }
 
 async fn baseline_action(State(st): State<AppState>, ctx: Ctx, Path((id, action)): Path<(Uuid, String)>, body: Option<Json<Value>>) -> ApiResult<Envelope> {

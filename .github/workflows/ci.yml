@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  lint:
+    name: Format, clippy and requirement coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Coverage matrix is current and every implemented row has existing tests
+        run: |
+          python3 scripts/coverage_report.py --check
+          git diff --exit-code docs/requirements/coverage.tsv docs/requirements/coverage.md
+
+  test:
+    name: Unit, API and edge tests (PostgreSQL, non-superuser role)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      IOT_TEST_DATABASE_URL: postgres://aether_iot:aether_iot@localhost:5432/aether_iot_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Create the application role (row-level security must apply)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE aether_iot LOGIN PASSWORD 'aether_iot' NOSUPERUSER NOBYPASSRLS" \
+            -c "CREATE DATABASE aether_iot_test OWNER aether_iot"
+      - run: cargo build --locked --workspace --all-targets
+      - name: Tests (the platform end-to-end test is skipped without IOT_E2E=1, the load driver without IOT_LOAD=1)
+        run: cargo test --locked --workspace
+      - name: Load driver (debug build, small sizes)
+        env:
+          IOT_LOAD: "1"
+          IOT_LOAD_CELLS: "80"
+          IOT_LOAD_DECISIONS: "20000"
+        run: cargo test --locked -p iot-service --test load -- --nocapture
+      - name: Migrations apply with the application role
+        env:
+          IOT_DATABASE_URL: ${{ env.IOT_TEST_DATABASE_URL }}
+        run: cargo run --locked -q -p iot-service --bin aether-iot -- migrate
+
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t aether-iot-ot:ci .

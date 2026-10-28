@@ -49,6 +49,11 @@ async fn baseline_monitoring_raises_anomalies_alerts_and_signals() {
     // Risk signals for the platform with subject_type workload.
     let sig = h.scalar(t, "SELECT coalesce(jsonb_agg(signal), '[]') FROM signal_outbox").await;
     assert!(sig.to_string().contains("\"workload\""), "{sig}");
+    // Baseline snapshot taken before completion; the difference shows the learned edge.
+    let bl = h.get(&format!("/api/v1/assets/{id}/baseline"), &tok).await;
+    let snap = bl["data"]["snapshots"][0]["id"].as_str().expect("snapshot").to_string();
+    let diff = h.get(&format!("/api/v1/assets/{id}/baseline/snapshots/{snap}/diff"), &tok).await;
+    assert!(diff["data"]["added"].to_string().contains("10.46.0.99"), "{diff}");
     let timeline = h.get(&format!("/api/v1/assets/{id}/timeline"), &tok).await;
     assert!(timeline["data"].to_string().contains("baseline_complete"), "{timeline}");
 }

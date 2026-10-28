@@ -1,0 +1,22 @@
+{
+  "title": "Aether IoT/OT Security",
+  "uid": "aether-iot-ot",
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    { "type": "timeseries", "title": "API requests by status", "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (status) (rate(aether_iot_http_requests_total[5m]))" }] },
+    { "type": "timeseries", "title": "API latency p50 / p99", "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(aether_iot_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(aether_iot_http_request_duration_seconds_bucket[5m])))", "legendFormat": "p99" }] },
+    { "type": "timeseries", "title": "Ingestion (batches and observations)", "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (event, outcome) (rate(aether_iot_events_total{event=~\"ingest_.*\"}[5m]))" }] },
+    { "type": "timeseries", "title": "Platform shipping", "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (event) (rate(aether_iot_events_total{event=~\"log_.*|worker_cycle\"}[5m]))" }] },
+    { "type": "timeseries", "title": "Edge decisions", "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum by (outcome) (rate(aether_iot_edge_events_total{event=\"decision\"}[5m]))" }] },
+    { "type": "stat", "title": "Edge configuration version", "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [{ "expr": "aether_iot_edge_state{name=\"config_version\"}" }] }
+  ]
+}

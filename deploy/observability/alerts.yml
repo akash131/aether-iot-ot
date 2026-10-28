@@ -1,0 +1,64 @@
+# Prometheus alerting rules for Aether IoT/OT Security (control plane
+# `aether_iot_*`, edge appliance `aether_iot_edge_*`). Runbooks:
+# docs/operations.md. Failure-mode keys follow iot-core failure.rs
+# (GET /api/v1/failure-modes).
+groups:
+  - name: aether-iot-control-plane
+    rules:
+      - alert: IotApiErrorRate
+        expr: |
+          sum(rate(aether_iot_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(aether_iot_http_requests_total[5m])), 1) > 0.02
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: More than 2% of IoT/OT API requests fail with 5xx
+          runbook: docs/operations.md#api-errors
+      - alert: IotApiLatency
+        expr: histogram_quantile(0.99, sum by (le) (rate(aether_iot_http_request_duration_seconds_bucket{route!~"/api/v1/node/observations|/api/v1/reports/.*|/api/v1/assets/export"}[5m]))) > 1
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: p99 latency of interactive IoT/OT APIs above 1 s
+          runbook: docs/operations.md#latency
+      - alert: IotIngestBackpressure
+        expr: sum(rate(aether_iot_http_requests_total{route="/api/v1/node/observations",status="429"}[5m])) > 0.5
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: Observation ingestion is shedding load (429); edges keep batches queued (failure mode storage_backlog)
+          runbook: docs/operations.md#ingest-backpressure
+      - alert: IotObservationsRejected
+        expr: sum(rate(aether_iot_events_total{event="ingest_observation",outcome="error"}[15m])) > 0.1
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: Observations are being rejected by the pipeline
+          runbook: docs/operations.md#rejected-observations
+      - alert: IotLogShippingFailing
+        expr: sum(rate(aether_iot_events_total{event="log_shipped",outcome="error"}[30m])) > 0 and sum(rate(aether_iot_events_total{event="log_shipped",outcome="ok"}[30m])) == 0
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: Logs are not reaching the platform log store
+          runbook: docs/operations.md#platform-unreachable
+  - name: aether-iot-edge
+    rules:
+      - alert: IotEdgeConfigApplyFailing
+        expr: increase(aether_iot_edge_events_total{event="config_apply",outcome="error"}[30m]) > 0
+        labels: { severity: page }
+        annotations:
+          summary: An edge refused a configuration (verification failure); it keeps enforcing the last verified one
+          runbook: docs/operations.md#edge-configuration
+      - alert: IotEdgeParserPanic
+        expr: increase(aether_iot_edge_events_total{event="parser_panic"}[1h]) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: A protocol decoder failed on an edge (failure mode parser_crash); the frame was dropped
+          runbook: docs/operations.md#parser-failures
+      - alert: IotEdgeBatchesDropped
+        expr: increase(aether_iot_edge_events_total{event="batch_dropped"}[30m]) > 0
+        labels: { severity: ticket }
+        annotations:
+          summary: The edge observation queue overflowed (failure modes cloud_outage / storage_backlog)
+          runbook: docs/operations.md#edge-queue

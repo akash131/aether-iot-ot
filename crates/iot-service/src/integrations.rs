@@ -1,6 +1,6 @@
 //! Peer product integrations over their documented HTTP APIs, behind
 //! traits with fallbacks (ZTE-IOT sections 57, 79 private application
-//! access, 80 Zero Trust Branch Integration, 81 Branch Enforcement, 87–91
+//! access, 80 Branch Integration, 81 Branch Enforcement, 87–91
 //! remote access; docs/integration.md §11).
 //!
 //! * [`Branch`] — pulls the device observations branch edges report

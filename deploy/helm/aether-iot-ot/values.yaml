@@ -1,0 +1,81 @@
+image:
+  repository: ghcr.io/akash131/aether-iot-ot
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 3
+
+# Platform integration (register the service first:
+#   aether register-service --name aether-iot-ot --product iot --base-url https://iot.example.com --console-path /svc/iot --scopes svc.iot:nodes)
+platform:
+  url: https://aether.example.com
+  issuer: https://aether.example.com
+  audience: aether
+
+# Existing secret with keys: database-url, encryption-keys, client-id, client-secret
+existingSecret: aether-iot-ot
+
+config:
+  publicUrl: https://iot.example.com
+  # Data region served by this release (one release per region).
+  dataRegion: ""
+  # Peer products (empty: the built-in fallback is used).
+  branchUrl: ""
+  privateAccessUrl: ""
+  firewallUrl: ""
+  # Vulnerability feed document (empty: bundled sample feed).
+  vulnFeedUrl: ""
+  dbMaxConnections: 20
+  ingestConcurrency: 16
+  rateLimitPerMinute: 3000
+  observationRetentionDays: 14
+  historyRetentionDays: 400
+  # Run background workers in a separate deployment (recommended at scale).
+  separateWorkers: true
+
+workers:
+  replicaCount: 2
+
+resources:
+  requests: { cpu: 500m, memory: 512Mi }
+  limits: { cpu: "2", memory: 1Gi }
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 65
+
+podDisruptionBudget:
+  minAvailable: 2
+
+service:
+  port: 8096
+
+ingress:
+  enabled: false
+  className: nginx
+  host: iot.example.com
+  tlsSecret: iot-tls
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+
+networkPolicy:
+  enabled: true
+
+# Edge appliance on Kubernetes sites (one pod per mirrored-traffic node).
+# Usually the edge runs on dedicated site hardware with the same image
+# (`aether-iot edge`); this DaemonSet is for sites that run Kubernetes.
+edge:
+  enabled: false
+  # Secret with key provisioning-key (platform provisioning key of a service_edge node group).
+  provisioningKeySecret: aether-iot-edge
+  # Secret with key admin-token protecting the local decision API.
+  adminTokenSecret: aether-iot-edge
+  controlUrl: https://aether.example.com/svc/iot
+  tzspBind: 0.0.0.0:37008
+  enforce: false
+  nodeSelector: { aether.dev/iot-edge: "true" }
+  resources:
+    requests: { cpu: 250m, memory: 256Mi }
+    limits: { cpu: "2", memory: 1Gi }

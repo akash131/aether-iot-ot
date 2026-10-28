@@ -1,0 +1,63 @@
+{{- if .Values.edge.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "iot.name" . }}-edge
+  labels: {{- include "iot.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: {{ include "iot.name" . }}, component: edge }
+  template:
+    metadata:
+      labels: {{- include "iot.labels" . | nindent 8 }}
+        component: edge
+    spec:
+      # Mirrored traffic (TZSP) arrives on the node's interfaces.
+      hostNetwork: true
+      nodeSelector: {{- toYaml .Values.edge.nodeSelector | nindent 8 }}
+      securityContext: { runAsNonRoot: {{ not .Values.edge.enforce }}, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: edge
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          args: ["edge"]
+          env:
+            - name: IOT_LOG_JSON
+              value: "1"
+            - name: AETHER_PLATFORM_URL
+              value: {{ .Values.platform.url | quote }}
+            - name: IOT_CONTROL_URL
+              value: {{ .Values.edge.controlUrl | quote }}
+            - name: IOT_EDGE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: IOT_TZSP_BIND
+              value: {{ .Values.edge.tzspBind | quote }}
+            - name: IOT_SPOOL_DIR
+              value: /var/spool/aether-iot
+            - name: IOT_STATE_DIR
+              value: /var/lib/aether-iot
+            - name: IOT_EDGE_ENFORCE
+              value: {{ .Values.edge.enforce | quote }}
+            - name: IOT_PROVISIONING_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.edge.provisioningKeySecret }}, key: provisioning-key } }
+            - name: IOT_EDGE_ADMIN_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.edge.adminTokenSecret }}, key: admin-token } }
+          readinessProbe: { httpGet: { path: /health/ready, port: 8097, host: 127.0.0.1 }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health/live, port: 8097, host: 127.0.0.1 }, periodSeconds: 20 }
+          resources: {{- toYaml .Values.edge.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              {{- if .Values.edge.enforce }}
+              add: ["NET_ADMIN"]
+              {{- end }}
+          volumeMounts:
+            - { name: state, mountPath: /var/lib/aether-iot }
+            - { name: spool, mountPath: /var/spool/aether-iot }
+      volumes:
+        - name: state
+          hostPath: { path: /var/lib/aether-iot, type: DirectoryOrCreate }
+        - name: spool
+          hostPath: { path: /var/spool/aether-iot, type: DirectoryOrCreate }
+{{- end }}
