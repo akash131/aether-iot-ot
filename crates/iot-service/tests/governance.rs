@@ -156,8 +156,14 @@ async fn worker_cycle_and_retention() {
     let n = iot_service::workers::housekeeping(&h.state, t).await.unwrap();
     assert!(n >= 3, "{n}");
     assert_eq!(h.count("observations", t).await, 0);
-    // A full worker cycle with no platform configured is a no-op that never fails.
-    iot_service::workers::run_cycle(&h.state, 6).await.unwrap();
+    // The per-tenant worker steps without a platform are no-ops that never fail
+    // (the shared test database holds many tenants, so the full cycle is not run here).
+    iot_service::workers::supervise_remote(&h.state, t).await.unwrap();
+    iot_service::workers::sync_approvals(&h.state, t).await.unwrap();
+    iot_service::workers::sweep(&h.state, t).await.unwrap();
+    iot_service::workers::pull_branch(&h.state, t).await.unwrap();
+    iot_service::workers::push_firewall(&h.state, t).await.unwrap();
+    assert_eq!(iot_service::workers::ship_logs(&h.state).await.unwrap(), 0, "nothing is shipped without platform credentials");
     let st = h.get("/api/v1/status", &tok).await;
     assert!(st["data"].is_object(), "{st}");
     let diag = h.get("/api/v1/diagnostics", &tok).await;

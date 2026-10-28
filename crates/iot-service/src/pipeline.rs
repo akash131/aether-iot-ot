@@ -222,6 +222,9 @@ pub struct Outcome {
 }
 
 /// Process a batch (idempotent by `batch_id`).
+/// Observations committed per transaction during ingestion.
+pub const INGEST_CHUNK: usize = 25;
+
 pub async fn ingest(state: &AppState, ctx: &Ctx, site: Option<Uuid>, batch: Batch) -> ApiResult<Outcome> {
     if batch.observations.len() > iot_core::model::MAX_OBSERVATIONS_PER_BATCH {
         return Err(ApiError::payload_too_large(format!("at most {} observations per batch", iot_core::model::MAX_OBSERVATIONS_PER_BATCH)));
@@ -243,6 +246,10 @@ pub async fn ingest(state: &AppState, ctx: &Ctx, site: Option<Uuid>, batch: Batc
     let tc = tenant_ctx(state, tenant).await?;
     let now = Utc::now();
     let mut out = Outcome::default();
+    // Observations are processed in chunks: one transaction (one commit)
+    // per chunk, a savepoint per observation so a failing observation is
+    // rolled back alone and reported, never the batch.
+    let mut obs: Vec<(usize, Observation)> = vec![];
     for (i, mut o) in batch.observations.into_iter().enumerate() {
         if let Err(code) = o.sanitize(now) {
             out.rejected.push(json!({ "index": i, "code": code }));
@@ -251,28 +258,35 @@ pub async fn ingest(state: &AppState, ctx: &Ctx, site: Option<Uuid>, batch: Batc
         if site.is_some() {
             o.site = site.map(|s| s.to_string());
         }
+        obs.push((i, o));
+    }
+    for chunk in obs.chunks(INGEST_CHUNK) {
         let mut tx = ctx.tx().await?;
-        match process(state, ctx, &mut tx, &tc, &o, batch.sensor_id, batch.batch_id.as_deref()).await {
-            Ok(r) => {
-                tx.commit().await?;
-                out.accepted += 1;
-                if r.created {
-                    out.created += 1;
-                } else {
-                    out.updated += 1;
+        for (i, o) in chunk {
+            sqlx::query("SAVEPOINT obs").execute(&mut *tx).await?;
+            match process(state, ctx, &mut tx, &tc, o, batch.sensor_id, batch.batch_id.as_deref()).await {
+                Ok(r) => {
+                    sqlx::query("RELEASE SAVEPOINT obs").execute(&mut *tx).await?;
+                    out.accepted += 1;
+                    if r.created {
+                        out.created += 1;
+                    } else {
+                        out.updated += 1;
+                    }
+                    out.anomalies += r.anomalies;
+                    if !out.assets.contains(&r.asset) && out.assets.len() < 1000 {
+                        out.assets.push(r.asset);
+                    }
                 }
-                out.anomalies += r.anomalies;
-                if !out.assets.contains(&r.asset) && out.assets.len() < 1000 {
-                    out.assets.push(r.asset);
+                Err(e) => {
+                    sqlx::query("ROLLBACK TO SAVEPOINT obs").execute(&mut *tx).await?;
+                    state.metrics.count("ingest_observation", "error");
+                    tracing::warn!(error = %e.detail, "observation rejected");
+                    out.rejected.push(json!({ "index": i, "code": e.code, "detail": e.detail }));
                 }
-            }
-            Err(e) => {
-                let _ = tx.rollback().await;
-                state.metrics.count("ingest_observation", "error");
-                tracing::warn!(error = %e.detail, "observation rejected");
-                out.rejected.push(json!({ "index": i, "code": e.code, "detail": e.detail }));
             }
         }
+        tx.commit().await?;
     }
     if let Some(stats) = &batch.stats {
         record_protocol_stats(state, tenant, site, stats).await?;
@@ -518,12 +532,21 @@ pub async fn process(state: &AppState, ctx: &Ctx, tx: &mut Tx, tc: &TenantCtx, o
     .await?;
     // Flows: rollups and graph.
     let bucket = o.observed_at.duration_trunc(Duration::hours(1)).unwrap_or(o.observed_at);
+    let peer_ips: Vec<&str> = o.flows.iter().take(iot_core::model::MAX_FLOWS).map(|f| f.peer_ip.as_str()).collect();
+    let peers: HashMap<String, Uuid> = if peer_ips.is_empty() {
+        HashMap::new()
+    } else {
+        sqlx::query_as::<_, (String, Uuid)>(
+            "SELECT DISTINCT ON (ip) ip, id FROM assets WHERE ip = ANY($1) AND merged_into IS NULL AND deleted_at IS NULL ORDER BY ip, last_seen DESC",
+        )
+        .bind(&peer_ips)
+        .fetch_all(&mut **tx)
+        .await?
+        .into_iter()
+        .collect()
+    };
     for f in o.flows.iter().take(iot_core::model::MAX_FLOWS) {
-        let peer_asset: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM assets WHERE ip = $1 AND merged_into IS NULL AND deleted_at IS NULL ORDER BY last_seen DESC LIMIT 1")
-            .bind(&f.peer_ip)
-            .fetch_optional(&mut **tx)
-            .await?;
-        let peer_asset = peer_asset.map(|p| p.0).filter(|p| *p != id);
+        let peer_asset = peers.get(&f.peer_ip).copied().filter(|p| *p != id);
         sqlx::query(
             "INSERT INTO flow_rollups (tenant_id, asset_id, bucket, peer_ip, transport, port, outbound, peer_asset_id, protocol, max_op, operations, packets, bytes)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)

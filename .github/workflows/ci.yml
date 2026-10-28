@@ -29,7 +29,7 @@ jobs:
       - name: Coverage matrix is current and every implemented row has existing tests
         run: |
           python3 scripts/coverage_report.py --check
-          git diff --exit-code docs/requirements/coverage.tsv docs/requirements/coverage.md
+          git diff --exit-code docs/requirements/coverage.tsv docs/requirements/coverage.md docs/traceability.md
 
   test:
     name: Unit, API and edge tests (PostgreSQL, non-superuser role)

@@ -190,6 +190,10 @@ async fn iot_ot_end_to_end() {
     let tenant = Uuid::parse_str(claims["tid"].as_str().unwrap()).unwrap();
     let admin = Api { http: http.clone(), base: platform_url.clone(), token: token.clone() };
     let product = Api { http: http.clone(), base: product_url.clone(), token: token.clone() };
+    // What a tenant-scoped service token of this product may do (docs/platform-gaps.md #1).
+    let svc = state.platform.service_token(Some(tenant)).await.expect("service token");
+    let sc: Value = serde_json::from_slice(&base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(svc.split('.').nth(1).unwrap()).unwrap()).unwrap();
+    eprintln!("service token: act={} ent={} perms={}", sc["act"], sc["ent"], sc["perms"]);
     let schema = admin.get("/api/v1/log-schemas/iot_discovery").await;
     assert!(schema["data"]["fields"].to_string().contains("device_type"), "{schema}");
     let ext = admin.get("/api/v1/policy-types/firewall.network").await;

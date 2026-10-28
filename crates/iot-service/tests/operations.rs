@@ -181,7 +181,7 @@ async fn lifecycle_quarantine_merge_and_decommission() {
     let d = h.get(&format!("/api/v1/assets/{pid}"), &tok).await;
     assert_eq!(d["data"]["lifecycle"], "decommissioned", "{d}");
     // Decommissioned assets cannot be quarantined again or moved back silently.
-    let (s, _, _) = h.call(Method::POST, &format!("/api/v1/assets/{pid}/lifecycle"), Some(&tok), Some(json!({ "to": "discovered" })), &[]).await;
+    let (s, _, _) = h.call(Method::POST, &format!("/api/v1/assets/{pid}/lifecycle"), Some(&tok), Some(json!({ "state": "discovered" })), &[]).await;
     assert!(s == 409 || s == 422, "{s}");
     // Import (CMDB) creates assets with asserted identity.
     let imp = h

@@ -341,7 +341,7 @@ async fn diagnostics(State(st): State<AppState>, ctx: Ctx) -> ApiResult<Envelope
     Ok(Envelope::ok(
         &ctx,
         json!({ "version": env!("CARGO_PKG_VERSION"), "uptime_secs": st.started.elapsed().as_secs(), "counts": counts, "config": { "production": c.production, "workers": c.workers, "ingest_concurrency": c.ingest_concurrency,
-            "data_region": c.data_region, "observation_retention_days": c.observation_retention_days, "history_retention_days": c.history_retention_days, "platform_url": c.platform.url,
+            "data_region": c.data_region, "observation_retention_days": c.observation_retention_days, "history_retention_days": c.history_retention_days, "platform_url": c.platform.url, "public_url": c.public_url,
             "peers": { "branch": c.peers.branch_url.is_some(), "private_access": c.peers.private_access_url.is_some(), "firewall": c.peers.firewall_url.is_some(), "vuln_feed": c.peers.vuln_feed_url.is_some() } },
             "platform": st.platform.health(), "ingest_permits_available": st.ingest.available_permits(), "latency_p99_secs": { "ingest_batch": st.telemetry.quantile("ingest_batch", 0.99), "simulate": st.telemetry.quantile("simulate", 0.99) } }),
     ))

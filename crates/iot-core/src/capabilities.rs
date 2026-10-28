@@ -96,7 +96,7 @@ pub const CAPABILITIES: &[Capability] = &[
     c!(2, "IoT/OT Security Architecture", ControlPlane, "iot-core (all engines); iot-service api, pipeline, workers, edge", "modbus"),
     c!(3, "Site And Sensor Topology", ControlPlane, "api/resources.rs (sites, sensors); edge/mod.rs (enrolment)", "modbus"),
     c!(4, "Passive Discovery", EdgeCollector, "iot-core collect.rs; edge/capture.rs", "camera"),
-    c!(5, "Active Discovery Safeguards", Engines, "iot-core activeq.rs; api/ingest.rs (active query plans); edge/activeq.rs", "plc_enip"),
+    c!(5, "Active Discovery Safeguards", Engines, "iot-core activeq.rs; api/findings.rs (active query plans); api/ingest.rs (results); edge/activeq.rs", "plc_enip"),
     c!(6, "Packet Metadata Collection", EdgeCollector, "iot-core packet.rs, collect.rs", "modbus"),
     c!(7, "Flow-Based Discovery", EdgeCollector, "iot-core collect.rs (flows); pipeline.rs", "modbus"),
     c!(8, "DHCP Fingerprinting", Engines, "iot-core fingerprint/dhcp.rs, classify.rs", "camera"),
